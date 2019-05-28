@@ -238,13 +238,13 @@ int main(void)
 		//Comando interno mask
 		if(strcmp(inputBuffer, "mask") == 0) {
 			if (args[1] == NULL || args[2] == NULL || args[3] == NULL) {
-				printf("Error de sintaxis. Uso: mask <s> -c <cmd [with arguments]>\n");
+				printf(ROJO"Error de sintaxis. Uso: mask <s> -c <cmd [with arguments]>"NEGRO"\n");
 				continue;
 			} 
 			int i = 0, noer = 1, j = 0;
 			while(noer && args[i+1] != NULL && strcmp(args[i+1], "-c")) {
 				if(atoi(args[i+1]) < 1) {
-					printf("Error de sintaxis. Uso: mask <s> -c <cmd [with arguments]>\n");
+					printf(ROJO"Error de sintaxis. Uso: mask <s> -c <cmd [with arguments]>"NEGRO"\n");
 					noer = 0;
 				} else {
 					sigs[i] = atoi(args[i+1]);
@@ -255,7 +255,7 @@ int main(void)
 			sigs[i] = 0;
 			i++;
 			if(args[i] == NULL || strcmp(args[i], "-c") != 0 || args[i+1] == NULL ){
-				printf("Error de sintaxis. Uso: mask <s> -c <cmd [with arguments]>\n");
+				printf(ROJO"Error de sintaxis. Uso: mask <s> -c <cmd [with arguments]>"NEGRO"\n");
 				continue;
 			}
 			i++;
