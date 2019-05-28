@@ -9,7 +9,7 @@ Dept. Arquitectura de Computadores - UMA
 Some code adapted from "Fundamentos de Sistemas Operativos", Silberschatz et al.
 
 To compile and run the program:
-   $ gcc Shell_project_amp.c job_control.c -o Shellamp
+   $ gcc Shell_project_amp.c job_control.c -o Shellamp -pthread
    $ ./Shellamp
 	(then type ^D to exit program)
 
@@ -26,6 +26,10 @@ To compile and run the program:
 #define NEGRO	"\x1b[0m"
 
 job * joblist; // lista de tareas, global para usarla en el manejador
+
+// variables globales para comando time-out
+int timeo;
+int pid_timeo;
 
 // ---------------------------------------------------------------------
 //                             MANEJADOR
@@ -96,6 +100,17 @@ job * joblist; // lista de tareas, global para usarla en el manejador
 			strsignal(senal));
 		fflush(stdout);
 	}
+	
+// -------------------------- Thread para comando time-out -------------
+
+	void *alarm_thread(void *null) {
+		int my_pid_timeo = pid_timeo;
+		debug(my_pid_timeo, "%d");
+		sleep(timeo);
+		printf("Se acabó el tiempo! KILL!\n");
+		kill(my_pid_timeo, SIGKILL);
+		pthread_exit(NULL);
+	}
 
 // ---------------------------------------------------------------------
 //                            MAIN
@@ -112,12 +127,17 @@ int main(void)
 	enum status status_res; /* status processed by analyze_status() */
 	int info;				/* info processed by analyze_status() */
 	
+	// variables para estado respawnable
 	int respawnable; /* igual a 1 si el comando termina en '+' */
 	
 	// variables para comando mask
 	int maskable; /* igual a 1 si comando mask */
 	int sigs[20];
 	sigset_t block_masksig;
+	
+	//variables para comando time-out
+	int timeoutable;
+	pthread_t tid_timeout;
 	
 	//inicializo la lista de procesos guardados
 	args[0] = NULL;
@@ -134,6 +154,18 @@ int main(void)
 		get_command(inputBuffer, MAX_LINE, args, &background, &respawnable);  /* get next command */
 		
 		if(args[0]==NULL) continue;   // if empty command
+		
+		//Comando internos cd	
+		if(strcmp(inputBuffer, "cd") == 0) {	
+			if (args[1] != NULL) { 	
+				if (chdir(args[1]) == -1) { // cambia al directorio especificado	
+					printf(ROJO"\nRuta '%s' no encontrada\n"NEGRO, args[1]);	
+				}	
+			} else {	
+				chdir(getenv("HOME")); 	
+			}	
+			continue;	
+		}
 		
 		//Comando interno jobs
 		if(strcmp(inputBuffer, "jobs") == 0) {
@@ -276,6 +308,25 @@ int main(void)
 			maskable = 1;
 		}
 		
+		//Comando interno time-out
+		if(strcmp(inputBuffer, "time-out") == 0) {
+			if (args[1] == NULL || args[2] == NULL || atoi(args[1]) < 0) {
+				printf(ROJO"Error de sintaxis. Uso: time-out <t> <cmd [with arguments]>"NEGRO"\n");
+				continue;
+			}
+			
+			timeo = atoi(args[1]);
+			int i = 0;
+			while (args[i+2] != NULL) {
+			args[i] = strdup(args[i+2]);
+			i++;
+			}
+			args[i] = NULL;
+			strcpy(inputBuffer, args[0]);
+			
+			timeoutable = 1;
+		}
+		
 		//(1) fork a child process using fork()
 		pid_fork = fork();
 		
@@ -289,10 +340,20 @@ int main(void)
 				sigprocmask(SIG_BLOCK, &block_masksig, NULL);
 			}
 			
+			if (timeoutable == 1) { //comando time-out
+				pid_timeo = getpgid(pid_fork);
+				debug(pid_timeo, "%d");
+				int rc = pthread_create(&tid_timeout, NULL, alarm_thread, NULL);
+				debug(rc, "%d");
+				if(rc) {
+					printf("error en el hilo");
+				}
+			}
+			
 			if (background == 0) { // si no es background, toma el control
 				set_terminal(getpgid(pid_fork));
 			}
-
+			
 			restore_terminal_signals();
 			//(2) the child process will invoke execvp()
 			execvp(inputBuffer, args);
