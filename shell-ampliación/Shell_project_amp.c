@@ -10,7 +10,7 @@ Some code adapted from "Fundamentos de Sistemas Operativos", Silberschatz et al.
 
 To compile and run the program:
    $ gcc Shell_project_amp.c job_control.c -o Shellamp
-   $ ./Shellamp         
+   $ ./Shellamp
 	(then type ^D to exit program)
 
 **/
@@ -87,7 +87,6 @@ job * joblist; // lista de tareas, global para usarla en el manejador
 			}
 		}
 		unblock_SIGCHLD(); // se desbloquea la señal SIGCHLD
-		
 	}
 	
 // -------------------------- Manejador para comando mask -------------
@@ -115,11 +114,18 @@ int main(void)
 	
 	int respawnable; /* igual a 1 si el comando termina en '+' */
 	
+	// variables para comando mask
+	int maskable; /* igual a 1 si comando mask */
+	int sigs[20];
+	sigset_t block_masksig;
+	
+	//inicializo la lista de procesos guardados
 	args[0] = NULL;
 	joblist = new_list("Job list", args);
 	
 	ignore_terminal_signals();
 	signal(SIGCHLD, manejador); // capturar señal SIGCHLD y manejarla
+	
 	
 	while (1)   /* Program terminates normally inside get_command() after ^D is typed*/
 	{
@@ -129,18 +135,6 @@ int main(void)
 		
 		if(args[0]==NULL) continue;   // if empty command
 		
-		//Comando internos cd
-		if(strcmp(inputBuffer, "cd") == 0) {
-			if (args[1] != NULL) { 
-				if (chdir(args[1]) == -1) { // cambia al directorio especificado
-					printf(ROJO"\nRuta '%s' no encontrada\n"NEGRO, args[1]);
-				}
-			} else {
-				chdir(getenv("HOME")); 
-			}
-			continue;
-		}
-
 		//Comando interno jobs
 		if(strcmp(inputBuffer, "jobs") == 0) {
 			if (joblist->next == NULL) {
@@ -154,6 +148,7 @@ int main(void)
 		//Comando interno fg
 		if(strcmp(inputBuffer, "fg") == 0) {
 			int n;
+			
 			
 			if(args[1] == NULL) { // si no se indica, reanudamos el primero
 				n = 1;
@@ -242,58 +237,43 @@ int main(void)
 		
 		//Comando interno mask
 		if(strcmp(inputBuffer, "mask") == 0) {
-			if (args[1] == NULL || args[2] == NULL || args[3] == NULL || 
-					atoi(args[1]) < 1 || strcmp(args[2], "-c") != 0) {
+			if (args[1] == NULL || args[2] == NULL || args[3] == NULL) {
 				printf("Error de sintaxis. Uso: mask <s> -c <cmd [with arguments]>\n");
-			} else {
-				int sig = atoi(args[1]);
-				char * argsmask[MAX_LINE/2];
-				int i = 0;
-				while (args[i+3] != NULL) {
-					argsmask[i] = strdup(args[i+3]);
-					i++;
+				continue;
+			} 
+			int i = 0, noer = 1, j = 0;
+			while(noer && args[i+1] != NULL && strcmp(args[i+1], "-c")) {
+				if(atoi(args[i+1]) < 1) {
+					printf("Error de sintaxis. Uso: mask <s> -c <cmd [with arguments]>\n");
+					noer = 0;
+				} else {
+					sigs[i] = atoi(args[i+1]);
 				}
-				argsmask[i] = NULL;
-				
-				int pidmask = fork();
-				if (pidmask == 0) { // hijo enmascarado
-					new_process_group(getpid());
-					if (background == 0) { // si no es background, toma el control
-						set_terminal(getpgid(getpid()));
-					}
-					restore_terminal_signals();
-					//signal(sig, intercepcion); //enmascaro la señal
-					signal(sig, SIG_IGN);
-					execvp(argsmask[0], argsmask);
-					printf("Comando '%s' no encontrado\n", argsmask[0]);
-					exit(-1);
-				} else { // padre
-					if (background == 0) {
-						pid_wait = waitpid(pidmask, &status, WUNTRACED); // espera al hijo
-						set_terminal(getpgid(getpid())); //recupera el terminal
-						status_res = analyze_status(status, &info);
-						if (status_res == SUSPENDED) {
-							job *aux = new_job(pidmask, argsmask[0], argsmask, STOPPED);
-							block_SIGCHLD();
-							add_job(joblist, aux);
-							unblock_SIGCHLD();
-							printf(BOLD"Foreground (masked) job suspended... pid: %d, command: %s, %s, info: %d\n"REGULAR, 
-								pidmask, argsmask[0], status_strings[status_res], info);
-						} else {
-							//(4) Shell shows a status message for processed command 
-							printf(BOLD"Foreground (masked) job exited... pid: %d, command: %s, %s, info: %d\n"REGULAR, 
-								pidmask, argsmask[0], status_strings[status_res], info);
-						}
-					} else {// si es background
-						job *aux = new_job(pidmask, argsmask[0], argsmask,  BACKGROUND);
-						block_SIGCHLD();
-						add_job(joblist, aux);
-						unblock_SIGCHLD();
-						printf(BOLD"Background (masked) job running... pid: %d, command: %s\n"REGULAR, pidmask, argsmask[0]);
-					}
-				}
+				i++;
 			}
-			continue;
+			if(!noer) continue;
+			sigs[i] = 0;
+			i++;
+			if(args[i] == NULL || strcmp(args[i], "-c") != 0 || args[i+1] == NULL ){
+				printf("Error de sintaxis. Uso: mask <s> -c <cmd [with arguments]>\n");
+				continue;
+			}
+			i++;
+			while (args[j+i] != NULL) {
+				args[j] = strdup(args[i+j]);
+				j++;
+			}
+			args[j] = NULL;
+			strcpy(inputBuffer, args[0]);
+			
+			sigemptyset(&block_masksig);
+			
+			int k = 0;
+			while (sigs[k] != 0) {
+				sigaddset(&block_masksig, sigs[k]);
+				k++;
+			}
+			maskable = 1;
 		}
 		
 		//(1) fork a child process using fork()
@@ -305,6 +285,10 @@ int main(void)
 			pid_fork = getpid();
 			new_process_group(getpid());
 			
+			if (maskable == 1) { //comando mask
+				sigprocmask(SIG_BLOCK, &block_masksig, NULL);
+			}
+			
 			if (background == 0) { // si no es background, toma el control
 				set_terminal(getpgid(pid_fork));
 			}
@@ -312,15 +296,15 @@ int main(void)
 			restore_terminal_signals();
 			//(2) the child process will invoke execvp()
 			execvp(inputBuffer, args);
-			printf("Comando '%s' no encontrado\n", inputBuffer);
+			printf(ROJO"Comando '%s' no encontrado\n"NEGRO, inputBuffer);
 			exit(-1);
 		} else {  // proceso padre
 			//(3) if background == 0, the parent will wait, otherwise continue 
 			if (background == 0) {
 				pid_wait = waitpid(pid_fork, &status, WUNTRACED); // espera al hijo
-				set_terminal(getpgid(getpid())); //recupera el terminal
+				set_terminal(getpgid(getpid())); // recupera el terminal
 				status_res = analyze_status(status, &info);
-
+				
 				if (status_res == SUSPENDED) { // si se ha suspendido, lo añade a la lista
 					job *aux = new_job(pid_fork, inputBuffer, args, STOPPED);
 					block_SIGCHLD();
