@@ -100,6 +100,18 @@ int main(void)
 		
 		if(args[0]==NULL) continue;   // if empty command
 		
+		// Comando internos cd
+		if(strcmp(inputBuffer, "cd") == 0) {
+			if (args[1] != NULL) { 
+				if (chdir(args[1]) == -1) { // cambia al directorio especificado
+					printf(ROJO"\nRuta '%s' no encontrada\n"NEGRO, args[1]);
+				}
+			} else {
+				chdir(getenv("HOME")); 
+			}
+			continue;
+		}
+
 		//Comando interno jobs
 		if(strcmp(inputBuffer, "jobs") == 0) {
 			if (joblist->next == NULL) {
