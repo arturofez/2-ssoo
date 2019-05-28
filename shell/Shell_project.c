@@ -33,7 +33,6 @@ job * joblist; // lista de tareas, global para usarla en el manejador
 
 	void manejador(int senal)
 	{
-		//int pid = getpid();
 		int pid, status, info;
 		enum status status_res;
 		job * jobs = joblist->next;
@@ -42,7 +41,6 @@ job * joblist; // lista de tareas, global para usarla en el manejador
 		while (jobs != NULL){
 			pid = waitpid(jobs->pgid, &status, WUNTRACED | WNOHANG | WCONTINUED);
 			status_res = analyze_status(status, &info);
-			//debug(status,%d);
 			if (pid == jobs->pgid) {
 				if (status_res == SUSPENDED) { // si se suspende
 					printf(BOLD"\nBackground job suspended... pid: %d, command: %s, info: %d"REGULAR"\nCOMMAND->", 
@@ -100,7 +98,7 @@ int main(void)
 		
 		if(args[0]==NULL) continue;   // if empty command
 		
-		// Comando internos cd
+		//Comando internos cd
 		if(strcmp(inputBuffer, "cd") == 0) {
 			if (args[1] != NULL) { 
 				if (chdir(args[1]) == -1) { // cambia al directorio especificado
