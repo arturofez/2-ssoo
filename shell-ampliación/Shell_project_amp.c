@@ -17,6 +17,7 @@ To compile and run the program:
 
 #include "job_control.h"   // remember to compile with module job_control.c 
 #include <string.h>
+#include <pthread.h>
 
 #define MAX_LINE 256 /* 256 chars per line, per command, should be enough. */
 
@@ -26,10 +27,6 @@ To compile and run the program:
 #define NEGRO	"\x1b[0m"
 
 job * joblist; // lista de tareas, global para usarla en el manejador
-
-// variables globales para comando time-out
-int timeo;
-int pid_timeo;
 
 // ---------------------------------------------------------------------
 //                             MANEJADOR
@@ -103,12 +100,15 @@ int pid_timeo;
 	
 // -------------------------- Thread para comando time-out -------------
 
-	void *alarm_thread(void *null) {
-		int my_pid_timeo = pid_timeo;
-		debug(my_pid_timeo, "%d");
-		sleep(timeo);
-		printf("Se acabó el tiempo! KILL!\n");
-		kill(my_pid_timeo, SIGKILL);
+	void *alarm_thread(void *params) {
+		int *thread_params = (int *) params;
+		printf(BOLD"\nIniciando cuenta atrás de %d segundos"NEGRO"\n",thread_params[0]);
+		fflush(stdout);
+		sleep(thread_params[0]);
+		if (getpgid(thread_params[1]) >= 0){
+			printf(ROJO"\nSe acabó el tiempo, aniquilando proceso..."NEGRO"\n");
+			kill(thread_params[1], SIGKILL);
+		}
 		pthread_exit(NULL);
 	}
 
@@ -137,6 +137,7 @@ int main(void)
 	
 	//variables para comando time-out
 	int timeoutable;
+	int *timeoutparams;
 	pthread_t tid_timeout;
 	
 	//inicializo la lista de procesos guardados
@@ -310,12 +311,13 @@ int main(void)
 		
 		//Comando interno time-out
 		if(strcmp(inputBuffer, "time-out") == 0) {
-			if (args[1] == NULL || args[2] == NULL || atoi(args[1]) < 0) {
-				printf(ROJO"Error de sintaxis. Uso: time-out <t> <cmd [with arguments]>"NEGRO"\n");
+			if (args[1] == NULL || args[2] == NULL || atoi(args[1]) < 1) {
+				printf(ROJO"Error de sintaxis. Uso: time-out <seconds> <cmd [with arguments]>"NEGRO"\n");
 				continue;
 			}
 			
-			timeo = atoi(args[1]);
+			timeoutparams = (int*)malloc(2*sizeof(int));
+			timeoutparams[0] = atoi(args[1]);
 			int i = 0;
 			while (args[i+2] != NULL) {
 			args[i] = strdup(args[i+2]);
@@ -340,16 +342,6 @@ int main(void)
 				sigprocmask(SIG_SETMASK, &block_masksig, NULL);
 			}
 			
-			if (timeoutable == 1) { //comando time-out
-				pid_timeo = getpgid(pid_fork);
-				debug(pid_timeo, "%d");
-				int rc = pthread_create(&tid_timeout, NULL, alarm_thread, NULL);
-				debug(rc, "%d");
-				if(rc) {
-					printf("error en el hilo");
-				}
-			}
-			
 			if (background == 0) { // si no es background, toma el control
 				set_terminal(getpgid(pid_fork));
 			}
@@ -360,6 +352,13 @@ int main(void)
 			printf(ROJO"Comando '%s' no encontrado\n"NEGRO, inputBuffer);
 			exit(-1);
 		} else {  // proceso padre
+			if (timeoutable == 1) { //comando time-out
+				timeoutparams[1] = pid_fork;
+				int rc = pthread_create(&tid_timeout, NULL, alarm_thread, timeoutparams);
+				if(rc) {
+					printf(ROJO"Error al crear el hilo"NEGRO"\n");
+				}
+			}
 			//(3) if background == 0, the parent will wait, otherwise continue 
 			if (background == 0) {
 				pid_wait = waitpid(pid_fork, &status, WUNTRACED); // espera al hijo
@@ -392,7 +391,9 @@ int main(void)
 				unblock_SIGCHLD();
 				printf(BOLD"Background job running... pid: %d, command: %s\n"REGULAR, pid_fork, inputBuffer);
 			}
-			maskable = 0; // anulamos el indicador del comando mask para el siguiente comando
+			// anulamos los indicadorres de los comando internos
+			maskable = 0;
+			timeoutable = 0;
 		}
 	//(5) loop returns to get_commnad() function
 	} // end while
