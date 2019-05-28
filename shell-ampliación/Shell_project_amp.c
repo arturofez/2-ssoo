@@ -131,7 +131,7 @@ int main(void)
 	int respawnable; /* igual a 1 si el comando termina en '+' */
 	
 	// variables para comando mask
-	int maskable; /* igual a 1 si comando mask */
+	int maskable = 0; /* igual a 1 si comando mask */
 	int sigs[20];
 	sigset_t block_masksig;
 	
@@ -337,7 +337,7 @@ int main(void)
 			new_process_group(getpid());
 			
 			if (maskable == 1) { //comando mask
-				sigprocmask(SIG_BLOCK, &block_masksig, NULL);
+				sigprocmask(SIG_SETMASK, &block_masksig, NULL);
 			}
 			
 			if (timeoutable == 1) { //comando time-out
@@ -392,7 +392,7 @@ int main(void)
 				unblock_SIGCHLD();
 				printf(BOLD"Background job running... pid: %d, command: %s\n"REGULAR, pid_fork, inputBuffer);
 			}
-			
+			maskable = 0; // anulamos el indicador del comando mask para el siguiente comando
 		}
 	//(5) loop returns to get_commnad() function
 	} // end while
