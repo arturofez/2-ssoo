@@ -68,9 +68,7 @@ job * joblist; // lista de tareas, global para usarla en el manejador
 							pid, jobs->command, info);
 						fflush(stdout);
 						job *aux = new_job(pidres, jobs->command, jobs->args, RESPAWNABLE);
-						block_SIGCHLD();     
 						add_job(joblist, aux);
-						unblock_SIGCHLD();
 						printf(BOLD"Command %s reborn...\n"REGULAR"COMMAND->", jobs->command);
 						fflush(stdout);
 						delete_job(joblist, jobs);
